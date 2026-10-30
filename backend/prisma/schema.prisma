@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CircleRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum RsvpStatus {
+  GOING
+  MAYBE
+  NOT_GOING
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  passwordHash  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships CircleMembership[]
+  posts       Post[]
+  events      Event[]
+  polls       Poll[]
+  votes       PollVote[]
+  rsvps       EventAttendee[]
+}
+
+model Circle {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships CircleMembership[]
+  posts       Post[]
+  events      Event[]
+  polls       Poll[]
+}
+
+model CircleMembership {
+  id       Int        @id @default(autoincrement())
+  userId   Int
+  circleId Int
+  role     CircleRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, circleId])
+  @@index([circleId])
+}
+
+model Post {
+  id        Int      @id @default(autoincrement())
+  authorId  Int
+  circleId  Int
+  text      String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
+  @@index([circleId, createdAt])
+}
+
+model Event {
+  id          Int      @id @default(autoincrement())
+  circleId    Int
+  authorId    Int
+  title       String
+  description String?
+  imageUrl    String?
+  eventDate   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author    User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  circle    Circle          @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  attendees EventAttendee[]
+
+  @@index([circleId, eventDate])
+}
+
+model EventAttendee {
+  id      Int        @id @default(autoincrement())
+  eventId Int
+  userId  Int
+  status  RsvpStatus @default(GOING)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+model Poll {
+  id        Int       @id @default(autoincrement())
+  title     String
+  circleId  Int
+  authorId  Int
+  createdAt DateTime  @default(now())
+  closesAt  DateTime?
+
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  circle      Circle       @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  pollOptions PollOption[]
+  votes       PollVote[]
+
+  @@index([circleId, createdAt])
+}
+
+model PollOption {
+  id     Int    @id @default(autoincrement())
+  title  String
+  pollId Int
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+}
+
+model PollVote {
+  id       Int      @id @default(autoincrement())
+  pollId   Int
+  optionId Int
+  userId   Int
+  votedAt  DateTime @default(now())
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pollId])
+}
