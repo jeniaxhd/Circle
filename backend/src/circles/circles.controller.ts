@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CirclesService } from './circles.service.js';
 import { CreateCircleDto } from './dto/create-circle.dto.js';
 import { UpdateCircleDto } from './dto/update-circle.dto.js';
+import { CreateCircleInviteDto } from './dto/create-circle-invite.dto.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('circles')
@@ -68,5 +69,14 @@ export class CirclesController {
     @CurrentUserId() userId: number
   ) {
       return this.circlesService.findMember(userId, memberId, circleId)
+  }
+
+  @Post(':circleId/invites')
+  createInvite(
+    @CurrentUserId() userId: number,
+    @Param('circleId', ParseIntPipe) circleId: number,
+    @Body() dto: CreateCircleInviteDto
+  ){
+    return this.circlesService.createInvite(circleId, userId, dto)
   }
 }

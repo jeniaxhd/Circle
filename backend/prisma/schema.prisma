@@ -41,11 +41,13 @@ model Circle {
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  invites CircleInvite[]
 
   memberships CircleMembership[]
   posts       Post[]
   events      Event[]
   polls       Poll[]
+  
 }
 
 model CircleMembership {
@@ -59,6 +61,21 @@ model CircleMembership {
   circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, circleId])
+  @@index([circleId])
+}
+
+model CircleInvite {
+  id        Int       @id @default(autoincrement())
+  circleId  Int
+  tokenHash String    @unique
+  maxUses   Int       @default(1)
+  uses      Int       @default(0)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
   @@index([circleId])
 }
 
@@ -145,3 +162,5 @@ model PollVote {
 
   @@unique([userId, pollId])
 }
+
+
