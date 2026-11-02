@@ -8,5 +8,6 @@ import { PostsService } from './posts.service.js';
   imports: [AuthModule, CirclesModule],
   controllers: [PostsController],
   providers: [PostsService],
+  exports: [PostsService],
 })
 export class PostsModule {}

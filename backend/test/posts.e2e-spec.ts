@@ -228,6 +228,104 @@ describe('Posts API (e2e)', () => {
     }
   });
 
+  it('supports comment CRUD while enforcing authorship and post/circle isolation', async () => {
+    const server = app.getHttpServer();
+    const base = `/circles/${circleId}/posts/${postId}/comments`;
+    await request(server).get(base).expect(401);
+    const created = await request(server)
+      .post(base)
+      .auth(memberToken, { type: 'bearer' })
+      .send({ text: 'Comment', authorId, postId: otherPostId })
+      .expect(201);
+    const id = created.body.id as number;
+    expect(created.body.postId).toBe(postId);
+    expect(created.body.authorId).toBe(memberId);
+    expect(created.body.author).toEqual({
+      id: memberId,
+      name: 'Posts test member',
+    });
+    const listed = await request(server)
+      .get(base)
+      .auth(authorToken, { type: 'bearer' })
+      .expect(200);
+    expect(
+      listed.body.some((comment: { id: number }) => comment.id === id),
+    ).toBe(true);
+    await request(server)
+      .patch(`${base}/${id}`)
+      .auth(authorToken, { type: 'bearer' })
+      .send({ text: 'Not my comment' })
+      .expect(403);
+    await request(server)
+      .delete(`${base}/${id}`)
+      .auth(authorToken, { type: 'bearer' })
+      .expect(403);
+    await request(server)
+      .get(base)
+      .auth(outsiderToken, { type: 'bearer' })
+      .expect(404);
+    await request(server)
+      .post(base)
+      .auth(outsiderToken, { type: 'bearer' })
+      .send({ text: 'Forbidden' })
+      .expect(404);
+    await request(server)
+      .get(`/circles/${otherCircleId}/posts/${postId}/comments`)
+      .auth(authorToken, { type: 'bearer' })
+      .expect(404);
+    const wrongPost = `/circles/${otherCircleId}/posts/${otherPostId}/comments/${id}`;
+    await request(server)
+      .patch(wrongPost)
+      .auth(authorToken, { type: 'bearer' })
+      .send({ text: 'Wrong post' })
+      .expect(404);
+    await request(server)
+      .delete(wrongPost)
+      .auth(authorToken, { type: 'bearer' })
+      .expect(404);
+    const edited = await request(server)
+      .patch(`${base}/${id}`)
+      .auth(memberToken, { type: 'bearer' })
+      .send({ text: 'Edited comment' })
+      .expect(200);
+    expect(edited.body.text).toBe('Edited comment');
+    await request(server)
+      .delete(`${base}/${id}`)
+      .auth(memberToken, { type: 'bearer' })
+      .expect(204);
+    await request(server)
+      .delete(`${base}/${id}`)
+      .auth(memberToken, { type: 'bearer' })
+      .expect(404);
+  });
+
+  it('validates comment text and cascades comment deletion when a post is deleted', async () => {
+    const server = app.getHttpServer();
+    const base = `/circles/${circleId}/posts/${postId}/comments`;
+    for (const text of [null, '', '   ', 123, 'x'.repeat(2001)]) {
+      await request(server)
+        .post(base)
+        .auth(authorToken, { type: 'bearer' })
+        .send({ text })
+        .expect(400);
+    }
+    const parent = await prisma.post.create({
+      data: { circleId, authorId, text: 'Temporary comment parent' },
+    });
+    const comment = await request(server)
+      .post(`/circles/${circleId}/posts/${parent.id}/comments`)
+      .auth(memberToken, { type: 'bearer' })
+      .send({ text: 'Temporary child' })
+      .expect(201);
+    await request(server)
+      .delete(`/circles/${circleId}/posts/${parent.id}`)
+      .auth(authorToken, { type: 'bearer' })
+      .expect(204);
+    expect(
+      await prisma.comment.findUnique({ where: { id: comment.body.id } }),
+    ).toBeNull();
+  });
+
   it('revokes access for a removed member even when their JWT remains valid', async () => {
     await prisma.circleMembership.delete({
       where: { userId_circleId: { userId: memberId, circleId } },

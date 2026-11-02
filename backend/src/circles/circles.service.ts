@@ -114,6 +114,136 @@ export class CirclesService {
     return member;
   }
 
+  async changeMemberRole(
+    userId: number,
+    circleId: number,
+    memberId: number,
+    role: 'ADMIN' | 'MEMBER',
+  ) {
+    const actor = await this.requireMembership(userId, circleId);
+    if (actor.role !== 'OWNER') {
+      throw new ForbiddenException('Only the owner can change member roles');
+    }
+    const member = await this.requireMembership(memberId, circleId);
+    if (member.role === 'OWNER') {
+      throw new ConflictException(
+        'Ownership cannot be changed through member roles',
+      );
+    }
+    return this.prisma.circleMembership.update({
+      where: {
+        userId_circleId: { userId: memberId, circleId },
+        role: { not: 'OWNER' },
+      },
+      data: { role },
+      select: { userId: true, role: true, joinedAt: true },
+    });
+  }
+
+  async removeMember(userId: number, circleId: number, memberId: number) {
+    const actor = await this.requireMembership(userId, circleId);
+    if (actor.role === 'MEMBER') {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+    const member = await this.requireMembership(memberId, circleId);
+    if (member.role === 'OWNER') {
+      throw new ConflictException('The owner cannot be removed');
+    }
+    if (actor.role === 'ADMIN' && member.role !== 'MEMBER') {
+      throw new ForbiddenException('Admins can only remove regular members');
+    }
+    const result = await this.prisma.circleMembership.deleteMany({
+      where: {
+        userId: memberId,
+        circleId,
+        role: actor.role === 'ADMIN' ? 'MEMBER' : { not: 'OWNER' },
+      },
+    });
+    if (result.count === 0) {
+      throw new ConflictException('Membership changed; refresh and try again');
+    }
+  }
+
+  async leaveCircle(userId: number, circleId: number) {
+    const member = await this.requireMembership(userId, circleId);
+    if (member.role === 'OWNER') {
+      throw new ConflictException('The owner cannot leave their circle');
+    }
+    const result = await this.prisma.circleMembership.deleteMany({
+      where: { userId, circleId, role: { not: 'OWNER' } },
+    });
+    if (result.count === 0) {
+      throw new ConflictException('Membership changed; refresh and try again');
+    }
+  }
+
+  async searchPosts(userId: number, circleId: number, query: string) {
+    await this.requireMembership(userId, circleId);
+    const text = query.trim().replace(/[\\%_]/g, '\\$&');
+
+    return this.prisma.post.findMany({
+      where: {
+        circleId,
+        text: { contains: text, mode: 'insensitive' },
+      },
+      orderBy: { id: 'desc' },
+      take: 50,
+      include: { author: { select: { id: true, name: true } } },
+    });
+  }
+
+  async findInvites(userId: number, circleId: number) {
+    const membership = await this.requireMembership(userId, circleId);
+
+    if (membership.role === 'MEMBER') {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    return this.prisma.circleInvite.findMany({
+      where: { circleId },
+      orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        maxUses: true,
+        uses: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async revokeInvite(userId: number, circleId: number, inviteId: number) {
+    const membership = await this.requireMembership(userId, circleId);
+
+    if (membership.role === 'MEMBER') {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    await this.prisma.circleInvite.updateMany({
+      where: { id: inviteId, circleId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    const invite = await this.prisma.circleInvite.findFirst({
+      where: { id: inviteId, circleId },
+      select: {
+        id: true,
+        maxUses: true,
+        uses: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
+    });
+
+    if (!invite) {
+      throw new NotFoundException('Invitation not found');
+    }
+
+    return invite;
+  }
+
   async createInvite(
     circleId: number,
     userId: number,

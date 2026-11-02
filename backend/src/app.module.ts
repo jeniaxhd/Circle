@@ -6,6 +6,10 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CirclesModule } from './circles/circles.module.js';
 import { PostsModule } from './posts/posts.module.js';
+import { CommentsModule } from './comments/comments.module.js';
+import { EventsModule } from './events/events.module.js';
+import { MemoriesModule } from './memories/memories.module.js';
+import { PollsModule } from './polls/polls.module.js';
 
 @Module({
   imports: [
@@ -14,6 +18,10 @@ import { PostsModule } from './posts/posts.module.js';
     AuthModule,
     CirclesModule,
     PostsModule,
+    CommentsModule,
+    EventsModule,
+    MemoriesModule,
+    PollsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Circle — тестовый интерфейс</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Circle</h1>
+      <span>Локальный интерфейс для тестирования</span
+      ><button id="health">Проверить backend</button>
+    </header>
+    <main>
+      <section class="box">
+        <div class="row">
+          <label class="grow">Пользователь<select id="accounts"></select></label
+          ><button id="show-auth">Войти ещё одним</button
+          ><button id="logout">Выйти</button>
+        </div>
+        <details id="auth" open>
+          <summary>Вход / регистрация</summary>
+          <form id="auth-form">
+            <div class="row">
+              <label
+                >Имя (для регистрации)<input
+                  name="name"
+                  autocomplete="name" /></label
+              ><label
+                >Email<input
+                  name="email"
+                  type="email"
+                  autocomplete="username"
+                  required /></label
+              ><label
+                >Пароль<input
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+              /></label>
+            </div>
+            <div class="row">
+              <button name="action" value="login">Войти</button
+              ><button name="action" value="register">
+                Зарегистрироваться
+              </button>
+            </div>
+          </form>
+        </details>
+      </section>
+      <section class="box">
+        <form id="join" class="row">
+          <label class="grow"
+            >Токен или ссылка приглашения<input
+              id="invite-token"
+              required
+              placeholder="Вставь приглашение" /></label
+          ><button>Вступить в круг</button>
+        </form>
+        <p id="invite-hint" hidden>
+          Открыто приглашение. Войди и нажми «Вступить в круг».
+        </p>
+      </section>
+      <div id="notice" role="status" aria-live="polite">
+        Войди или зарегистрируйся.
+      </div>
+      <section id="workspace" hidden>
+        <section class="box">
+          <div class="row">
+            <label class="grow">Круг<select id="circles"></select></label
+            ><button id="refresh-circles">Обновить круги</button>
+          </div>
+          <details>
+            <summary>Создать круг</summary>
+            <form id="create-circle">
+              <label>Название<input name="name" required /></label
+              ><label>Описание<textarea name="description"></textarea></label
+              ><button>Создать круг</button>
+            </form>
+          </details>
+        </section>
+        <nav id="tabs" aria-label="Разделы круга"></nav>
+        <section id="new-invite" class="box" hidden>
+          <strong>Новая ссылка приглашения</strong>
+          <div class="row">
+            <input
+              id="invite-link"
+              aria-label="Ссылка приглашения"
+              readonly
+              class="grow"
+            /><button id="copy-invite">Скопировать</button>
+          </div>
+          <small
+            >Скопируй ссылку перед переключением пользователя или круга.</small
+          >
+        </section>
+        <section class="box">
+          <h2 id="section-title">Посты</h2>
+          <div class="row">
+            <label id="post-label" hidden class="grow"
+              >Пост для комментариев<select id="posts"></select></label
+            ><label id="item-label" class="grow"
+              >Запись<select id="items"></select></label
+            ><button id="refresh">Обновить список</button>
+          </div>
+          <label>Действие<select id="operations"></select></label>
+          <form id="operation-form"></form>
+        </section>
+      </section>
+      <section class="box">
+        <h2>Ответ API</h2>
+        <div id="history" class="row"></div>
+        <pre id="response">Запросов пока нет.</pre>
+      </section>
+      <details class="box">
+        <summary>Произвольный запрос</summary>
+        <form id="manual">
+          <div class="row">
+            <label
+              >Метод<select name="method">
+                <option>GET</option>
+                <option>POST</option>
+                <option>PATCH</option>
+                <option>PUT</option>
+                <option>DELETE</option>
+              </select></label
+            ><label class="grow"
+              >Путь<input name="path" placeholder="/circles" required
+            /></label>
+          </div>
+          <label>JSON-тело<textarea name="body"></textarea></label
+          ><button>Отправить</button>
+        </form>
+      </details>
+    </main>
+  </body>
+</html>
