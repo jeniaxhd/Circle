@@ -106,6 +106,17 @@
               >Запись<select id="items"></select></label
             ><button id="refresh">Обновить список</button>
           </div>
+          <div id="pagination" class="row" hidden>
+            <label
+              >Постов на страницу<select id="page-size">
+                <option value="5">5</option>
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+              </select></label
+            >
+            <button id="load-more" type="button" hidden>Загрузить ещё</button>
+            <small id="page-info" role="status" aria-live="polite"></small>
+          </div>
           <label>Действие<select id="operations"></select></label>
           <form id="operation-form"></form>
         </section>

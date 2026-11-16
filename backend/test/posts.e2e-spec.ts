@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import request from 'supertest';
+import request, { type Response } from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
@@ -27,7 +27,9 @@ describe('Posts API (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = module.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
     prisma = app.get(PrismaService);
     const jwt = app.get(JwtService);
@@ -172,11 +174,64 @@ describe('Posts API (e2e)', () => {
       .get(`/circles/${circleId}/posts`)
       .auth(memberToken, { type: 'bearer' })
       .expect(200);
-    expect(response.body.length).toBeGreaterThan(0);
-    expect(response.body.length).toBeLessThanOrEqual(50);
-    for (const post of response.body) {
+    expect(response.body.items.length).toBeGreaterThan(0);
+    expect(response.body.items.length).toBeLessThanOrEqual(20);
+    for (const post of response.body.items) {
       expect(post.circleId).toBe(circleId);
       expect(Object.keys(post.author).sort()).toEqual(['id', 'name']);
+    }
+  });
+
+  it('paginates without duplicates and validates cursor and limit', async () => {
+    const server = app.getHttpServer();
+    const base = `/circles/${circleId}/posts`;
+    await prisma.post.createMany({
+      data: [
+        { circleId, authorId, text: 'Page A' },
+        { circleId, authorId, text: 'Page B' },
+        { circleId, authorId, text: 'Page C' },
+      ],
+    });
+    const expected = await prisma.post.findMany({
+      where: { circleId },
+      orderBy: { id: 'desc' },
+      select: { id: true },
+    });
+    const seen: number[] = [];
+    let cursor: number | null = null;
+    for (let i = 0; i <= expected.length; i++) {
+      const page: Response = await request(server)
+        .get(base)
+        .query({ limit: 2, ...(cursor === null ? {} : { cursor }) })
+        .auth(memberToken, { type: 'bearer' })
+        .expect(200);
+      expect(page.body.items.length).toBeLessThanOrEqual(2);
+      seen.push(...page.body.items.map((post: { id: number }) => post.id));
+      cursor = page.body.nextCursor;
+      if (cursor === null) break;
+      expect(cursor).toBe(page.body.items.at(-1).id);
+    }
+    expect(cursor).toBeNull();
+    expect(seen).toEqual(expected.map((post) => post.id));
+    const empty = await request(server)
+      .get(base)
+      .query({ cursor: 1 })
+      .auth(memberToken, { type: 'bearer' })
+      .expect(200);
+    expect(empty.body).toEqual({ items: [], nextCursor: null });
+    for (const query of [
+      { limit: 0 },
+      { limit: 51 },
+      { limit: 'abc' },
+      { cursor: 0 },
+      { cursor: 'abc' },
+      { cursor: 1.5 },
+    ]) {
+      await request(server)
+        .get(base)
+        .query(query)
+        .auth(memberToken, { type: 'bearer' })
+        .expect(400);
     }
   });
 

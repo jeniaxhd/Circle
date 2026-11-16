@@ -13,6 +13,7 @@ enum CircleRole {
   MEMBER
 }
 
+
 enum RsvpStatus {
   GOING
   MAYBE
@@ -36,6 +37,7 @@ model User {
   votes       PollVote[]
   rsvps       EventAttendee[]
   memories    Memory[]
+  reactions Reaction[]
 }
 
 model Circle {
@@ -87,7 +89,7 @@ model Post {
   authorId  Int
   circleId  Int
   text      String?
-  imageUrl  String?
+  imageKey  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -95,6 +97,7 @@ model Post {
   circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
 
   comments Comment[]
+  reactions Reaction[]
 
   @@index([circleId, createdAt])
 }
@@ -199,4 +202,26 @@ model Memory {
   circle Circle @relation(fields: [circleId], references: [id], onDelete: Cascade)
 
   @@index([circleId, occurredAt, id])
+}
+
+model Reaction{
+  id Int @id @default(autoincrement())
+  postId Int
+  authorId Int
+  emoji String
+  createdAt DateTime @default(now())
+
+  author User  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, authorId])
+}
+
+model FileCleanupTask{
+  id Int @id @default(autoincrement())
+  imageKey String
+  createdAt DateTime @default(now())
+  dispatchedAt DateTime?
+
+  @@index([dispatchedAt])
 }
