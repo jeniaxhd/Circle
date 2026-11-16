@@ -189,4 +189,63 @@ export class PollsService {
       throw error;
     }
   }
+
+  async removeVote(
+  userId: number,
+  circleId: number,
+  pollId: number,
+) {
+  try {
+    return await this.prisma.$transaction(
+      async (tx) => {
+        const membership = await tx.circleMembership.findUnique({
+          where: {
+            userId_circleId: { userId, circleId },
+          },
+        });
+
+        if (!membership) {
+          throw new NotFoundException('Circle not found');
+        }
+
+        const [poll] = await tx.$queryRaw<
+          Array<{ id: number; closesAt: Date | null }>
+        >`
+          SELECT "id", "closesAt"
+          FROM "Poll"
+          WHERE "id" = ${pollId}
+            AND "circleId" = ${circleId}
+          FOR UPDATE
+        `;
+
+        if (!poll) {
+          throw new NotFoundException('Poll not found');
+        }
+
+        if (
+          poll.closesAt !== null &&
+          poll.closesAt.getTime() <= Date.now()
+        ) {
+          throw new ConflictException('Poll is closed');
+        }
+
+        return await tx.pollVote.delete({
+          where: {
+            userId_pollId: { userId, pollId },
+          },
+        });
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      throw new NotFoundException('Vote not found');
+    }
+
+    throw error;
+  }
+}
 }

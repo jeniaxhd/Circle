@@ -68,6 +68,15 @@ export class PollsController {
     return this.pollsService.vote(userId, circleId, pollId, dto);
   }
 
+  @Delete(':pollId/votes')
+  removeVote(
+    @CurrentUserId() userId: number,
+    @Param('circleId', ParseIntPipe) circleId: number,
+    @Param('pollId', ParseIntPipe) pollId: number,
+  ){
+    return this.pollsService.removeVote(userId, circleId, pollId)
+  }
+
   @Patch(':pollId/close')
   close(
     @CurrentUserId() userId: number,

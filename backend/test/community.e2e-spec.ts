@@ -25,7 +25,9 @@ describe('Community APIs (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = module.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
     prisma = app.get(PrismaService);
     const jwt = app.get(JwtService);
@@ -90,6 +92,110 @@ describe('Community APIs (e2e)', () => {
     } finally {
       await app?.close();
     }
+  });
+
+  it('creates, replaces, counts and removes only the requester reaction', async () => {
+    const server = app.getHttpServer();
+    const base = `/circles/${circleId}/posts/${postId}/reactions`;
+    const initial = await request(server)
+      .get(base)
+      .auth(ownerToken, { type: 'bearer' })
+      .expect(200);
+    expect(initial.body).toEqual({ reactions: [], myReaction: null });
+    const created = await request(server)
+      .post(base)
+      .auth(ownerToken, { type: 'bearer' })
+      .send({ emoji: '👍', authorId: memberId })
+      .expect(201);
+    const id = created.body.id;
+    expect(created.body.authorId).toBe(ownerId);
+    const changed = await request(server)
+      .post(base)
+      .auth(ownerToken, { type: 'bearer' })
+      .send({ emoji: '❤️' })
+      .expect(201);
+    expect(changed.body.id).toBe(id);
+    await Promise.all(
+      Array.from({ length: 4 }, () =>
+        request(server)
+          .post(base)
+          .auth(memberToken, { type: 'bearer' })
+          .send({ emoji: '❤️' })
+          .expect(201),
+      ),
+    );
+    expect(await prisma.reaction.count({ where: { postId } })).toBe(2);
+    const summary = await request(server)
+      .get(base)
+      .auth(ownerToken, { type: 'bearer' })
+      .expect(200);
+    expect(summary.body).toEqual({
+      reactions: [{ emoji: '❤️', _count: { _all: 2 } }],
+      myReaction: { id, emoji: '❤️' },
+    });
+    await request(server)
+      .delete(base + '/' + id)
+      .auth(memberToken, { type: 'bearer' })
+      .expect(404);
+    await request(server)
+      .delete(base + '/' + id)
+      .auth(ownerToken, { type: 'bearer' })
+      .expect(200);
+    await request(server)
+      .delete(base + '/' + id)
+      .auth(ownerToken, { type: 'bearer' })
+      .expect(404);
+    const after = await request(server)
+      .get(base)
+      .auth(ownerToken, { type: 'bearer' })
+      .expect(200);
+    expect(after.body).toEqual({
+      reactions: [{ emoji: '❤️', _count: { _all: 1 } }],
+      myReaction: null,
+    });
+  });
+
+  it('protects reactions from unauthenticated users, outsiders and wrong-circle URLs', async () => {
+    const postId = (
+      await prisma.post.create({
+        data: { circleId, authorId: ownerId, text: 'Reaction access fixture' },
+      })
+    ).id;
+
+    const server = app.getHttpServer();
+    const base = `/circles/${circleId}/posts/${postId}/reactions`;
+    const wrong = `/circles/${otherCircleId}/posts/${postId}/reactions`;
+    const reaction = await prisma.reaction.create({
+      data: { postId, authorId: memberId, emoji: '❤️' },
+    });
+    for (const path of [base, wrong]) {
+      for (const method of ['get', 'post', 'delete'] as const) {
+        const url = path + (method === 'delete' ? '/' + reaction.id : '');
+        await request(server)
+          [method](url)
+          .send(method === 'post' ? { emoji: '😂' } : undefined)
+          .expect(401);
+        await request(server)
+          [method](url)
+          .auth(outsiderToken, { type: 'bearer' })
+          .send(method === 'post' ? { emoji: '😂' } : undefined)
+          .expect(404);
+        if (path === wrong)
+          await request(server)
+            [method](url)
+            .auth(ownerToken, { type: 'bearer' })
+            .send(method === 'post' ? { emoji: '😂' } : undefined)
+            .expect(404);
+      }
+    }
+    for (const emoji of [null, '', 123, 'x'.repeat(33)]) {
+      await request(server)
+        .post(base)
+        .auth(ownerToken, { type: 'bearer' })
+        .send({ emoji })
+        .expect(400);
+    }
+    expect(await prisma.reaction.count({ where: { postId } })).toBe(1);
   });
 
   it('supports events, author permissions, RSVP changes and tenant isolation', async () => {

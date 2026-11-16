@@ -10,6 +10,9 @@ import { CommentsModule } from './comments/comments.module.js';
 import { EventsModule } from './events/events.module.js';
 import { MemoriesModule } from './memories/memories.module.js';
 import { PollsModule } from './polls/polls.module.js';
+import { ReactionsModule } from './reactions/reactions.module.js';
+import { StorageModule } from './storage/storage.module.js';
+import { JobsModule } from './jobs/jobs.module.js';
 
 @Module({
   imports: [
@@ -22,6 +25,9 @@ import { PollsModule } from './polls/polls.module.js';
     EventsModule,
     MemoriesModule,
     PollsModule,
+    ReactionsModule,
+    StorageModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

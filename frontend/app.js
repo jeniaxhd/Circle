@@ -16,6 +16,11 @@ const S = {
   section: "posts",
   circles: [],
   items: [],
+  commentPosts: [],
+  nextCursor: null,
+  pageSize: 20,
+  listVersion: 0,
+  loadingMore: false,
   operation: 0,
   epoch: 0,
   history: [],
@@ -313,6 +318,7 @@ function clearContext() {
   $("#posts").replaceChildren();
   S.epoch++;
   S.items = [];
+  resetPaging();
   S.postId = "";
   S.history = [];
   $("#new-invite").hidden = true;
@@ -555,26 +561,95 @@ function renderOperations() {
   $("#operations").value = S.operation;
   renderItems();
   renderForm();
+  renderPaging();
+}
+function resetPaging() {
+  S.listVersion++;
+  S.nextCursor = null;
+  S.commentPosts = [];
+  S.loadingMore = false;
+  renderPaging();
+}
+function renderPaging() {
+  const visible = !!S.circleId && ["posts", "comments"].includes(S.section);
+  $("#pagination").hidden = !visible;
+  $("#page-size").value = String(S.pageSize);
+  const count =
+    S.section === "comments" ? S.commentPosts.length : S.items.length;
+  $("#page-info").textContent =
+    "Загружено постов: " +
+    count +
+    (S.nextCursor === null ? " · Больше постов нет" : "");
+  $("#load-more").hidden = S.nextCursor === null;
+  $("#load-more").disabled = S.loadingMore;
+  $("#load-more").textContent = S.loadingMore
+    ? "Загружаю…"
+    : S.section === "comments"
+      ? "Ещё посты для комментариев"
+      : "Загрузить ещё";
+}
+function renderCommentPosts() {
+  $("#posts").replaceChildren(
+    el("option", { value: "" }, "Выбери пост"),
+    ...S.commentPosts.map((post) =>
+      el(
+        "option",
+        { value: post.id },
+        "#" + post.id + " · " + (post.text || "").slice(0, 70),
+      ),
+    ),
+  );
+  $("#posts").value = S.postId;
+}
+async function loadMorePosts() {
+  if (S.loadingMore || S.nextCursor === null || !S.circleId) return;
+  const version = S.listVersion;
+  S.loadingMore = true;
+  renderPaging();
+  try {
+    const page = await api(
+      "GET",
+      circle() +
+        "/posts?" +
+        new URLSearchParams({ limit: S.pageSize, cursor: S.nextCursor }),
+    );
+    if (version !== S.listVersion) return;
+    if (S.section === "comments") {
+      const ids = new Set(S.commentPosts.map((post) => post.id));
+      S.commentPosts.push(...page.items.filter((post) => !ids.has(post.id)));
+      renderCommentPosts();
+    } else {
+      const ids = new Set(S.items.map((post) => post.id));
+      S.items.push(
+        ...page.items
+          .filter((post) => !ids.has(post.id))
+          .map((post) => ({ ...post, __key: post.id })),
+      );
+      renderItems();
+    }
+    S.nextCursor = page.nextCursor;
+  } finally {
+    if (version === S.listVersion) {
+      S.loadingMore = false;
+      renderPaging();
+    }
+  }
 }
 async function loadList() {
   S.items = [];
+  resetPaging();
+  const version = S.listVersion;
   renderOperations();
   if (!S.circleId) return;
   if (S.section === "comments") {
-    const posts = await api("GET", circle() + "/posts");
-    if (!posts.some((post) => String(post.id) === S.postId))
-      S.postId = String(posts[0]?.id || "");
-    $("#posts").replaceChildren(
-      el("option", { value: "" }, "Выбери пост"),
-      ...posts.map((post) =>
-        el(
-          "option",
-          { value: post.id },
-          "#" + post.id + " · " + (post.text || "").slice(0, 70),
-        ),
-      ),
-    );
-    $("#posts").value = S.postId;
+    const page = await api("GET", circle() + "/posts?limit=" + S.pageSize);
+    if (version !== S.listVersion) return;
+    S.commentPosts = page.items;
+    S.nextCursor = page.nextCursor;
+    if (!S.commentPosts.some((post) => String(post.id) === S.postId))
+      S.postId = String(S.commentPosts[0]?.id || "");
+    renderCommentPosts();
+    renderPaging();
     if (!S.postId) {
       renderOperations();
       notice("Сначала создай пост.");
@@ -582,11 +657,33 @@ async function loadList() {
     }
   }
   if (resources[S.section].noList) return;
-  const data = await api("GET", basePath());
-  S.items = (Array.isArray(data) ? data : [data]).map((item) => ({
+  const data = await api(
+    "GET",
+    basePath() + (S.section === "posts" ? "?limit=" + S.pageSize : ""),
+  );
+  if (version !== S.listVersion) return;
+  if (S.section === "posts") S.nextCursor = data.nextCursor;
+  const items =
+    S.section === "posts" ? data.items : Array.isArray(data) ? data : [data];
+  S.items = items.map((item) => ({
     ...item,
     __key: S.section === "members" ? item.user.id : item.id,
   }));
+  renderItems();
+  renderForm();
+  renderPaging();
+}
+async function loadComments() {
+  S.items = [];
+  const version = ++S.listVersion;
+  S.loadingMore = false;
+  renderItems();
+  renderForm();
+  renderPaging();
+  if (!S.postId) return;
+  const items = await api("GET", basePath());
+  if (version !== S.listVersion) return;
+  S.items = items.map((item) => ({ ...item, __key: item.id }));
   renderItems();
   renderForm();
 }
@@ -638,6 +735,14 @@ $("#operation-form").addEventListener("submit", (event) => {
       throw new Error("Сначала выбери запись.");
     if (S.section === "comments" && !S.postId)
       throw new Error("Сначала выбери пост.");
+    if (
+      S.section === "posts" &&
+      operation.method === "GET" &&
+      !operation.suffix
+    ) {
+      await loadList();
+      return;
+    }
     let path = operation.path
       ? operation.path()
       : basePath() + operation.suffix.replace(":id", selected()?.__key);
@@ -682,7 +787,8 @@ $("#operation-form").addEventListener("submit", (event) => {
     if (operation.method !== "GET") {
       if (path.endsWith("/membership") || S.section === "settings")
         await loadCircles();
-      await loadList();
+      if (S.section === "comments") await loadComments();
+      else await loadList();
     }
   }, event.submitter);
 });
@@ -695,7 +801,7 @@ $("#posts").addEventListener("change", (event) => {
   S.epoch++;
   S.postId = event.target.value;
   S.items = [];
-  run(loadList);
+  run(loadComments);
 });
 $("#circles").addEventListener("change", (event) => {
   clearContext();
@@ -779,6 +885,11 @@ $("#copy-invite").addEventListener("click", (event) =>
     notice("Ссылка скопирована.");
   }, event.target),
 );
+$("#load-more").addEventListener("click", () => run(loadMorePosts));
+$("#page-size").addEventListener("change", (event) => {
+  S.pageSize = Number(event.target.value);
+  run(loadList);
+});
 $("#refresh").addEventListener("click", (event) => run(loadList, event.target));
 $("#refresh-circles").addEventListener("click", (event) =>
   run(async () => {
